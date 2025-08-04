@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scraping Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto py-8">
+      <h1 class="text-3xl font-bold mb-4 text-center">Scraping Dashboard</h1>
+      <div class="flex justify-center space-x-4 mb-6">
+        <button
+          id="run-scraping"
+          class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+        >
+          Run Scraping
+        </button>
+        <button
+          id="refresh-data"
+          class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+        >
+          Refresh Data
+        </button>
+      </div>
+      <div id="message" class="text-center mb-4"></div>
+      <table class="min-w-full bg-white" id="data-table">
+        <thead>
+          <tr>
+            <th class="py-2 px-4 border-b">Fecha</th>
+            <th class="py-2 px-4 border-b">Causa</th>
+            <th class="py-2 px-4 border-b">Link</th>
+          </tr>
+        </thead>
+        <tbody id="data-body"></tbody>
+      </table>
+    </div>
+    <script src="main.js"></script>
+  </body>
+</html>
