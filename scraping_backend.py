@@ -7,7 +7,7 @@ import os
 import glob
 import pandas as pd
 from datetime import datetime, timedelta
-import logging
+import html
 
 # Selenium y BeautifulSoup
 from selenium import webdriver
@@ -86,6 +86,13 @@ def normalize_causa(causa_str):
     if not isinstance(causa_str, str):
         return "unknown_causa"
     return causa_str.replace(" ", "").replace("/", "_").replace("-", "_").lower()
+
+
+def sanitize_text(value):
+    """Escapa cualquier HTML en los campos de texto."""
+    if not isinstance(value, str):
+        return value
+    return html.escape(value)
 
 
 ########################################
@@ -230,12 +237,13 @@ def scrapingPJN(dni_usuario):
                     )
                     continue
 
-                causa = causa_elem.text.strip()
-                nombre = nombre_elem.text.strip()
+                causa = sanitize_text(causa_elem.text.strip())
+                nombre = sanitize_text(nombre_elem.text.strip())
 
                 # Extraer link (aria-label='Ver Causa')
                 link_elem = element_tr.find("a", attrs={"aria-label": "Ver Causa"})
-                link = link_elem.get("href", "") if link_elem else ""
+                link_raw = link_elem.get("href", "") if link_elem else ""
+                link = sanitize_text(link_raw)
 
                 # Mapeo de Tipo
                 tipo_mapeado = "NOVEDAD"
@@ -259,8 +267,8 @@ def scrapingPJN(dni_usuario):
                     # Por ahora, la fila se incluirá con Fecha=None, que luego se manejará.
 
                 row = {
-                    "Perito": perito_nombre,  # Usar el nombre completo del perito
-                    "Tipo": tipo_mapeado,
+                    "Perito": sanitize_text(perito_nombre),  # Usar el nombre completo del perito
+                    "Tipo": sanitize_text(tipo_mapeado),
                     "Causa": causa,
                     "Nombre": nombre,
                     "Fecha": fecha_dt,  # Guardar como objeto datetime
@@ -344,6 +352,11 @@ def saveToFirestore(rows_data):
                 data_to_save["Fecha"] = data_to_save["Fecha"]  # Firestore maneja datetime directamente
             if isinstance(data_to_save.get("ScrapedAt"), datetime):
                 data_to_save["ScrapedAt"] = data_to_save["ScrapedAt"]
+
+            # Sanitizar cualquier cadena antes de guardar
+            for k, v in list(data_to_save.items()):
+                if isinstance(v, str):
+                    data_to_save[k] = sanitize_text(v)
 
             # Añadir campos de control/estado por defecto si no existen
             if 'Aceptada' not in data_to_save:
