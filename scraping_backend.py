@@ -28,16 +28,27 @@ import concurrent.futures
 ########################################
 # Inicializa Firebase (si no está ya inicializado)
 ########################################
-# Es importante que el archivo pjn.json esté en la ruta correcta.
-# Considera usar una variable de entorno para la ruta del archivo de credenciales.
+# La ruta al archivo de credenciales debe especificarse mediante la
+# variable de entorno FIREBASE_CRED_PATH.
+FIREBASE_CRED_PATH = os.getenv("FIREBASE_CRED_PATH")
+
 try:
     if not firebase_admin._apps:  # Solo inicializar si no hay apps existentes
-        cred = credentials.Certificate("pjn.json")
+        if not FIREBASE_CRED_PATH or not os.path.isfile(FIREBASE_CRED_PATH):
+            raise FileNotFoundError(
+                f"Ruta de credenciales no encontrada o inválida: {FIREBASE_CRED_PATH}"
+            )
+        cred = credentials.Certificate(FIREBASE_CRED_PATH)
         firebase_admin.initialize_app(cred)
     db = firestore.client()
 except Exception as e:
-    print(f"Error fatal: No se pudo inicializar Firebase en scraping_backend.py: {e}")
-    print("Asegúrate de que 'pjn.json' es correcto y accesible.")
+    print(
+        f"Error fatal: No se pudo inicializar Firebase en scraping_backend.py: {e}"
+    )
+    print(
+        "Asegúrate de que la variable de entorno 'FIREBASE_CRED_PATH' apunta "
+        "a un archivo de credenciales válido."
+    )
     db = None  # Para evitar más errores si Firebase no se inicializa
     # Podrías querer que el script termine aquí si Firebase es esencial.
     # sys.exit("Saliendo debido a error de inicialización de Firebase.")
