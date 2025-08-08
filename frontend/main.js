@@ -10,11 +10,27 @@ async function fetchData() {
     tbody.innerHTML = "";
     data.forEach((row) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td class="py-2 px-4 border-b">${row.Fecha || ""}</td>
-        <td class="py-2 px-4 border-b">${row.Causa || ""}</td>
-        <td class="py-2 px-4 border-b"><a class="text-blue-500 underline" href="${row.Link || "#"}" target="_blank">Ver</a></td>
-      `;
+
+      const tdFecha = document.createElement("td");
+      tdFecha.className = "py-2 px-4 border-b";
+      tdFecha.textContent = row.Fecha || "";
+      tr.appendChild(tdFecha);
+
+      const tdCausa = document.createElement("td");
+      tdCausa.className = "py-2 px-4 border-b";
+      tdCausa.textContent = row.Causa || "";
+      tr.appendChild(tdCausa);
+
+      const tdLink = document.createElement("td");
+      tdLink.className = "py-2 px-4 border-b";
+      const link = document.createElement("a");
+      link.className = "text-blue-500 underline";
+      link.textContent = "Ver";
+      link.setAttribute("href", row.Link || "#");
+      link.setAttribute("target", "_blank");
+      tdLink.appendChild(link);
+      tr.appendChild(tdLink);
+
       tbody.appendChild(tr);
     });
     msg.textContent = "";
