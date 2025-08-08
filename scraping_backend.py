@@ -19,6 +19,11 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 from bs4 import BeautifulSoup
 
+# Cargar variables de entorno desde un archivo .env si está presente
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Firebase
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -56,20 +61,20 @@ except Exception as e:
     # sys.exit("Saliendo debido a error de inicialización de Firebase.")
 
 ########################################
-# Diccionario de usuarios y contraseñas
-# Considera mover esto a un archivo de configuración seguro o variables de entorno.
+# Carga de credenciales desde variables de entorno
 ########################################
-usuarios_contrasenas = {
-    "20269674130": {"contrasena": "tati2401", "nombre": "Mariano"},
-    "20046238037": {"contrasena": "tati2401", "nombre": "Horacio"},
-    "20107033026": {"contrasena": "1617Miguel", "nombre": "Miguel"},
-    "20135294579": {"contrasena": "sofi2703", "nombre": "Esteban"},
-    "20103331847": {"contrasena": "tati2401", "nombre": "Ovidio"},
-    "23176863269": {"contrasena": "cami1901", "nombre": "Marcelo"},
-    "27133869072": {"contrasena": "Auxiliar2019", "nombre": "Silvia"},
-    "27320911139": {"contrasena": "Alperito07", "nombre": "Guido"},
-    "20291933662": {"contrasena": "danielito1*", "nombre": "Dani"}
-}
+def _load_usuarios_contrasenas():
+    dnis = os.getenv("DNIS", "")
+    usuarios = {}
+    for dni in [d.strip() for d in dnis.split(",") if d.strip()]:
+        pwd = os.getenv(f"PASS_{dni}")
+        nombre = os.getenv(f"NAME_{dni}")
+        if pwd and nombre:
+            usuarios[dni] = {"contrasena": pwd, "nombre": nombre}
+    return usuarios
+
+
+usuarios_contrasenas = _load_usuarios_contrasenas()
 
 
 ########################################
