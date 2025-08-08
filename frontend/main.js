@@ -1,4 +1,7 @@
-const API_BASE = "http://localhost:8000"; // adjust to your backend URL
+const API_BASE =
+  window.localStorage.getItem("API_BASE") ||
+  window.API_BASE ||
+  ""; // defaults to relative URLs
 
 async function fetchData() {
   const msg = document.getElementById("message");

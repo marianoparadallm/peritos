@@ -26,6 +26,8 @@ from firebase_admin import credentials, firestore
 # Para ejecutar scraping en paralelo
 import concurrent.futures
 
+logger = logging.getLogger(__name__)
+
 ########################################
 # Inicializa Firebase (si no está ya inicializado)
 ########################################
@@ -37,8 +39,10 @@ try:
         firebase_admin.initialize_app(cred)
     db = firestore.client()
 except Exception as e:
-    print(f"Error fatal: No se pudo inicializar Firebase en scraping_backend.py: {e}")
-    print("Asegúrate de que 'pjn.json' es correcto y accesible.")
+    logger.error(
+        "Error fatal: No se pudo inicializar Firebase en scraping_backend.py: %s", e
+    )
+    logger.info("Asegúrate de que 'pjn.json' es correcto y accesible.")
     db = None  # Para evitar más errores si Firebase no se inicializa
     # Podrías querer que el script termine aquí si Firebase es esencial.
     # sys.exit("Saliendo debido a error de inicialización de Firebase.")
@@ -71,7 +75,9 @@ def parse_fecha(value_str):
         return datetime.strptime(value_str, "%d/%m/%Y")
     except ValueError:
         # Podrías intentar otros formatos o devolver None/lanzar error
-        print(f"Advertencia: No se pudo parsear la fecha '{value_str}' con formato DD/MM/YYYY.")
+        logger.warning(
+            "No se pudo parsear la fecha '%s' con formato DD/MM/YYYY.", value_str
+        )
         return None
 
 
@@ -110,11 +116,16 @@ def _get_scraper_webdriver():
     except WebDriverException:
         chrome_driver_path = "./chromedriver.exe" if os.name == 'nt' else "./chromedriver"
         if not os.path.exists(chrome_driver_path):
-            # Este print será visible si el script se ejecuta directamente
-            print(f"Error fatal: ChromeDriver no encontrado en PATH ni en {chrome_driver_path}.")
+            # Este log será visible si el script se ejecuta directamente
+            logger.error(
+                "Error fatal: ChromeDriver no encontrado en PATH ni en %s.",
+                chrome_driver_path,
+            )
             # Si el script es llamado por la app NiceGUI, este error podría no ser visible directamente allí.
             # Es crucial que chromedriver esté accesible.
-            raise FileNotFoundError(f"ChromeDriver no encontrado. El scraping no puede continuar.")
+            raise FileNotFoundError(
+                "ChromeDriver no encontrado. El scraping no puede continuar."
+            )
         service = Service(executable_path=chrome_driver_path)
 
     return webdriver.Chrome(service=service, options=chrome_options)
@@ -134,7 +145,9 @@ def scrapingPJN(dni_usuario):
     contrasena = datos_usuario["contrasena"]
     perito_nombre = datos_usuario["nombre"]
 
-    print(f"Iniciando scraping para {perito_nombre} (DNI: {dni_usuario})...")
+    logger.info(
+        "Iniciando scraping para %s (DNI: %s)...", perito_nombre, dni_usuario
+    )
     driver = None  # Inicializar driver a None
     try:
         driver = _get_scraper_webdriver()
@@ -169,28 +182,42 @@ def scrapingPJN(dni_usuario):
             elements = soup.select("tr.MuiBox-root")  # Usar select para CSS selectors
             if elements:
                 break
-            print(
-                f"Intento {attempt + 1}/{max_retries}: No se encontraron elementos para {perito_nombre}. Reintentando en 5s...")
+            logger.info(
+                "Intento %d/%d: No se encontraron elementos para %s. Reintentando en 5s...",
+                attempt + 1,
+                max_retries,
+                perito_nombre,
+            )
             time.sleep(5)
             driver.refresh()  # Refrescar la página puede ayudar
-            WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.CSS_SELECTOR, "tr.MuiBox-root")))
+            WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "tr.MuiBox-root"))
+            )
 
         if not elements:
-            msg = f"No se encontraron actualizaciones (elementos 'tr.MuiBox-root') para {perito_nombre} después de varios intentos."
-            print(msg)
-            if driver: driver.quit()
+            msg = (
+                f"No se encontraron actualizaciones (elementos 'tr.MuiBox-root') para {perito_nombre} después de varios intentos."
+            )
+            logger.info(msg)
+            if driver:
+                driver.quit()
             return (msg, [])
 
-        summary_text = f"Scraping para {perito_nombre}: Se encontraron {len(elements)} elementos."
-        print(summary_text)
+        summary_text = (
+            f"Scraping para {perito_nombre}: Se encontraron {len(elements)} elementos."
+        )
+        logger.info(summary_text)
         data_rows = []
 
         for element_tr in elements:
             try:
                 td_tags = element_tr.find_all("td")  # Buscar 'td' dentro de cada 'tr'
                 if len(td_tags) < 3:  # Verificar que haya suficientes celdas
-                    print(
-                        f"Advertencia: Fila con estructura inesperada para {perito_nombre}, se omite: {element_tr.get_text(strip=True, separator=' | ')}")
+                    logger.warning(
+                        "Fila con estructura inesperada para %s, se omite: %s",
+                        perito_nombre,
+                        element_tr.get_text(strip=True, separator=" | "),
+                    )
                     continue
 
                 tipo_raw = td_tags[0].text.strip()
@@ -203,8 +230,11 @@ def scrapingPJN(dni_usuario):
                 nombre_elem = element_tr.select_one("p.MuiTypography-root.MuiTypography-body1.w-full.italic.css-4icvzy")
 
                 if causa_elem is None or nombre_elem is None:
-                    print(
-                        f"Advertencia: No se encontró 'Causa' o 'Nombre' en una fila para {perito_nombre}. Fila: {element_tr.get_text(strip=True, separator=' | ')}")
+                    logger.warning(
+                        "No se encontró 'Causa' o 'Nombre' en una fila para %s. Fila: %s",
+                        perito_nombre,
+                        element_tr.get_text(strip=True, separator=" | "),
+                    )
                     continue
 
                 causa = sanitize_text(causa_elem.text.strip())
@@ -227,8 +257,12 @@ def scrapingPJN(dni_usuario):
                 # Parsear la fecha
                 fecha_dt = parse_fecha(fecha_str)  # Usar la función de parseo
                 if not fecha_dt:
-                    print(
-                        f"Advertencia: Fecha inválida '{fecha_str}' para {perito_nombre} en causa '{causa}'. Se usará fecha actual como placeholder o se omitirá.")
+                    logger.warning(
+                        "Fecha inválida '%s' para %s en causa '%s'. Se usará fecha actual como placeholder o se omitirá.",
+                        fecha_str,
+                        perito_nombre,
+                        causa,
+                    )
                     # Podrías decidir omitir la fila o usar una fecha por defecto.
                     # Por ahora, la fila se incluirá con Fecha=None, que luego se manejará.
 
@@ -244,27 +278,36 @@ def scrapingPJN(dni_usuario):
                 data_rows.append(row)
 
             except Exception as e_row:
-                print(
-                    f"Error procesando una fila para {perito_nombre}: {e_row}. Fila: {element_tr.get_text(strip=True, separator=' | ')}")
+                logger.error(
+                    "Error procesando una fila para %s: %s. Fila: %s",
+                    perito_nombre,
+                    e_row,
+                    element_tr.get_text(strip=True, separator=" | "),
+                )
                 continue
 
         if driver: driver.quit()
         return (summary_text, data_rows)
 
     except TimeoutException:
-        msg = f"Timeout durante el scraping para {perito_nombre}. La página no cargó a tiempo o un elemento esperado no apareció."
-        print(msg)
-        if driver: driver.quit()
+        msg = (
+            f"Timeout durante el scraping para {perito_nombre}. La página no cargó a tiempo o un elemento esperado no apareció."
+        )
+        logger.error(msg)
+        if driver:
+            driver.quit()
         return (msg, [])
     except WebDriverException as e_wd:
         msg = f"Error de WebDriver durante scraping para {perito_nombre}: {e_wd}"
-        print(msg)
-        if driver: driver.quit()
+        logger.error(msg)
+        if driver:
+            driver.quit()
         return (msg, [])
     except Exception as e_main:
         msg = f"Error inesperado durante scraping para {perito_nombre}: {e_main}"
-        print(msg)
-        if driver: driver.quit()  # Asegurarse de cerrar el driver en caso de error
+        logger.error(msg)
+        if driver:
+            driver.quit()  # Asegurarse de cerrar el driver en caso de error
         return (msg, [])
 
 
@@ -273,11 +316,13 @@ def scrapingPJN(dni_usuario):
 ########################################
 def saveToFirestore(rows_data):
     if not db:  # Verificar si Firebase está disponible
-        print("Error crítico: Cliente Firestore no disponible. No se pueden guardar los datos.")
+        logger.error(
+            "Cliente Firestore no disponible. No se pueden guardar los datos."
+        )
         return 0
 
     if not rows_data:
-        print("No hay datos para guardar en Firestore.")
+        logger.info("No hay datos para guardar en Firestore.")
         return 0
 
     batch = db.batch()
@@ -325,19 +370,28 @@ def saveToFirestore(rows_data):
                       merge=True)  # Usar merge=True para no sobrescribir campos existentes como 'Aceptada' si ya fueron modificados
             saved_count += 1
             if saved_count % 499 == 0:  # Firestore batch limit es 500
-                print(
-                    f"Realizando commit de batch de {saved_count % 499 if saved_count % 499 != 0 else 499} documentos...")
+                logger.info(
+                    "Realizando commit de batch de %d documentos...",
+                    saved_count % 499 if saved_count % 499 != 0 else 499,
+                )
                 batch.commit()
                 batch = db.batch()  # Nuevo batch
         except Exception as e:
-            print(f"Error preparando datos para Firestore para la fila: {row}. Error: {e}")
+            logger.error(
+                "Error preparando datos para Firestore para la fila: %s. Error: %s",
+                row,
+                e,
+            )
             # Podrías decidir si continuar con las otras filas o detenerte.
 
     if saved_count % 499 != 0:  # Commit del último batch si no estaba vacío
-        print(f"Realizando commit del batch final de {saved_count % 499} documentos...")
+        logger.info(
+            "Realizando commit del batch final de %d documentos...",
+            saved_count % 499,
+        )
         batch.commit()
 
-    print(f"Total de {saved_count} registros procesados para Firestore.")
+    logger.info("Total de %d registros procesados para Firestore.", saved_count)
     return saved_count
 
 
@@ -346,10 +400,13 @@ def saveToFirestore(rows_data):
 ########################################
 def run_all_scraping_concurrently():
     start_time_total = datetime.now()
-    print(f"Inicio de scraping concurrente a las {start_time_total.strftime('%d/%m/%Y %H:%M:%S')}")
+    logger.info(
+        "Inicio de scraping concurrente a las %s",
+        start_time_total.strftime("%d/%m/%Y %H:%M:%S"),
+    )
 
     if not db:
-        print("Scraping abortado: Cliente Firestore no disponible.")
+        logger.error("Scraping abortado: Cliente Firestore no disponible.")
         return
 
     all_user_dnis = list(usuarios_contrasenas.keys())
@@ -358,7 +415,7 @@ def run_all_scraping_concurrently():
     # Ajustar max_workers según los recursos de tu máquina y los límites del sitio web.
     # Un número muy alto puede sobrecargar tu sistema o el servidor web.
     num_workers = min(4, len(all_user_dnis))  # No más de 4 workers o el número de usuarios
-    print(f"Usando hasta {num_workers} workers concurrentes.")
+    logger.info("Usando hasta %d workers concurrentes.", num_workers)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
         future_to_dni = {executor.submit(scrapingPJN, dni): dni for dni in all_user_dnis}
@@ -371,12 +428,17 @@ def run_all_scraping_concurrently():
                     all_scraped_data.extend(user_rows)
             except Exception as e_future:
                 # Este error es si la tarea en sí misma (el future) falló catastróficamente.
-                print(f"Error crítico ejecutando scraping para DNI {dni}: {e_future}")
+                logger.error(
+                    "Error crítico ejecutando scraping para DNI %s: %s", dni, e_future
+                )
 
     if not all_scraped_data:
-        print("No se obtuvieron datos de ningún usuario después del scraping.")
+        logger.info("No se obtuvieron datos de ningún usuario después del scraping.")
     else:
-        print(f"Scraping completado. Total de {len(all_scraped_data)} filas obtenidas de todos los usuarios.")
+        logger.info(
+            "Scraping completado. Total de %d filas obtenidas de todos los usuarios.",
+            len(all_scraped_data),
+        )
 
         # Convertir a DataFrame para filtrado y ordenamiento (opcional, pero útil)
         df = pd.DataFrame(all_scraped_data)
@@ -394,14 +456,24 @@ def run_all_scraping_concurrently():
             df = df.sort_values('Fecha', ascending=False, na_position='last')
 
             final_data_to_save = df.to_dict(orient='records')
-            print(f"Guardando {len(final_data_to_save)} filas filtradas/ordenadas en Firestore...")
+            logger.info(
+                "Guardando %d filas filtradas/ordenadas en Firestore...",
+                len(final_data_to_save),
+            )
             saveToFirestore(final_data_to_save)
         else:
-            print("El DataFrame resultante del scraping está vacío. No se guardará nada.")
+            logger.info(
+                "El DataFrame resultante del scraping está vacío. No se guardará nada."
+            )
 
     end_time_total = datetime.now()
-    print(f"Scraping y actualización completados a las {end_time_total.strftime('%H:%M:%S')}")
-    print(f"Duración total del proceso: {end_time_total - start_time_total}")
+    logger.info(
+        "Scraping y actualización completados a las %s",
+        end_time_total.strftime("%H:%M:%S"),
+    )
+    logger.info(
+        "Duración total del proceso: %s", end_time_total - start_time_total
+    )
 
 
 ########################################
@@ -418,29 +490,55 @@ def main():
         "--interval",
         type=int,
         default=15,  # Intervalo por defecto de 15 minutos
-        help="Intervalo en minutos para ejecuciones periódicas (si --once no está presente). Ejemplo: 60"
+        help="Intervalo en minutos para ejecuciones periódicas (si --once no está presente). Ejemplo: 60",
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help="Nivel de logging (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
+    )
+    parser.add_argument(
+        "--log-file",
+        help="Archivo donde guardar los logs",
     )
     args = parser.parse_args()
 
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    handlers = [logging.StreamHandler()]
+    if args.log_file:
+        handlers.append(logging.FileHandler(args.log_file))
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=handlers,
+    )
+
     if not db:  # Chequeo final antes de empezar
-        print("No se puede ejecutar main(): Cliente Firestore no disponible.")
+        logger.error("No se puede ejecutar main(): Cliente Firestore no disponible.")
         return
 
     if args.once:
         run_all_scraping_concurrently()
     else:
-        print(f"Iniciando scraping periódico cada {args.interval} minutos. Presiona Ctrl+C para detener.")
+        logger.info(
+            "Iniciando scraping periódico cada %d minutos. Presiona Ctrl+C para detener.",
+            args.interval,
+        )
         while True:
             try:
                 run_all_scraping_concurrently()
-                print(f"Siguiente ejecución programada en {args.interval} minutos...")
+                logger.info(
+                    "Siguiente ejecución programada en %d minutos...", args.interval
+                )
                 time.sleep(args.interval * 60)
             except KeyboardInterrupt:
-                print("\nScraping periódico detenido por el usuario.")
+                logger.info("\nScraping periódico detenido por el usuario.")
                 break
             except Exception as e_loop:
-                print(f"Error inesperado en el bucle principal de scraping: {e_loop}")
-                print(f"Reintentando en {args.interval} minutos...")
+                logger.error(
+                    "Error inesperado en el bucle principal de scraping: %s", e_loop
+                )
+                logger.info("Reintentando en %d minutos...", args.interval)
                 time.sleep(args.interval * 60)
 
 
